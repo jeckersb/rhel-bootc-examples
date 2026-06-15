@@ -1,3 +1,99 @@
+# Fedora bootc examples
+
+Fork of https://github.com/redhat-cop/rhel-bootc-examples except
+geared towards demoing sealed images using Fedora on AWS with nested
+virt.  Original README below.
+
+## Prep
+
+- Launch Fedora 44 Cloud instance on AWS
+
+  - https://fedoraproject.org/cloud/download/#cloud_launch
+
+  - Instance type m8i.large, 30G storage, enable nested virt
+
+- Install git-core and just
+
+  ```
+  sudo dnf install -y git-core just
+  ```
+
+- Clone this
+
+  ```
+  git clone -b fedoraize https://github.com/jeckersb/rhel-bootc-examples
+  cd rhel-bootc-examples/sealing
+  ```
+
+- Install dependencies
+
+  ```
+  sudo just deps
+  ```
+
+## Running
+
+- Use as below, tl;dr
+
+  ```
+  just keygen
+  just bcvk-ssh
+  ```
+
+## Breaking it, for fun and profit!
+
+- Sanity check that the `date` command works
+
+  ```
+  [root@fedora ~]# date
+  Tue Jun 16 18:47:41 UTC 2026
+  ```
+
+- Remount sysroot rw so we can make "malicious" modifications to the
+  underlying objects
+
+  ```
+  [root@fedora ~]# mount -o remount,rw /sysroot
+  ```
+
+- Find the object in the composefs object store backing the `date`
+  command.  (Checking by size is fast and correct enough for demo
+  purposes)
+
+  ```
+  [root@fedora ~]# stat -c %s /usr/bin/date
+  98456
+  [root@fedora ~]# find /sysroot/composefs/objects -type f -size 98456c
+  /sysroot/composefs/objects/1b/ea65b0112e9e55f725330f2bf80c136518999e2f28aef1d2f26fe0d1b1a07808f5b81e2b7ab34f842c485b467e6c0ab9f86f91dc759efa91ab8547a296e514
+  ```
+
+- Make a "malicious" modification to the backing file.  The `date`
+  binary contains the string `JUNE`; we will change it to `CNCF`
+  instead.
+
+  ```
+  [root@fedora ~]# sed -i s/JUNE/CNCF/ /sysroot/composefs/objects/1b/ea65b0112e9e55f725330f2bf80c136518999e2f28aef1d2f26fe0d1b1a07808f5b81e2b7ab34f842c485b467e6c0ab9f86f91dc759efa91ab8547a296e514
+  ```
+
+- Drop dentry/inode cache.  For... reasons, overlayfs will not
+  necessarily pick up our modification.  This will force the issue.
+
+  ```
+  [root@fedora ~]# echo 2 > /proc/sys/vm/drop_caches
+  ```
+
+- Try to run the corrupted `date` command again.
+
+  ```
+  [root@fedora ~]# date
+  -bash: /usr/bin/date: Input/output error
+  ```
+
+  This fails because the fsverity digest no longer matches the
+  expected value from the sealed image.  Success!
+
+---
+
 # RHEL bootc examples
 
 Welcome to the examples repository for RHEL bootc (image mode for RHEL)!

@@ -12,6 +12,12 @@ host_image := "localhost/sealed-host:latest"
 # Key material directory (for local dev; CI uses secrets)
 keys_dir := justfile_directory() + "/target/keys"
 
+deps:
+	#!/bin/bash
+	set -euo pipefail
+	dnf install -y bcvk libvirt-daemon-qemu objcopy virt-fw-vars
+	systemctl start libvirtd.service
+
 # Generate Secure Boot keys (PK/KEK for enrollment, db for signing).
 # Copies db.crt into keys/ for committing to the repo.
 keygen:
